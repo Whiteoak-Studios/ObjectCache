@@ -1,7 +1,7 @@
 [package]
 name = "fadeluc-123/objectcache"
-description = "A better way to cache 3D objects"
-version = "2.4.0"
+description = "Easily cache 3D and 2D (and sounds!) assets with a category like structure. View the documentation at https://github.com/Whiteoak-Studios/ObjectCache/blob/main/README.md"
+version = "3.4.0"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
 license = "MIT"

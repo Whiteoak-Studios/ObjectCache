@@ -36,10 +36,11 @@ local Module = {
     to retrieve an item from a specific category
 --]]
 
-function Module:create(category: string) : category | nil
+function Module:create(category: string, parent: any | nil) : category | nil
     if not Module.cache[category] then
         Module.cache[category] = {
-            items = {}
+            items = {},
+            parent = parent
         }
 
         return Module.cache[category]
@@ -71,7 +72,7 @@ function Module:add(
     -- Clone objects and add them to their categories cache
     local cacheCategory: category = Module.cache[category]
     Promise.new(function()
-        for _ = 0, count or 1, 1 do
+        for _ = 1, count or 1, 1 do
             local clone: object = object:Clone()
             Module:_reset(object)
             clone.Parent = parent
@@ -92,9 +93,23 @@ end
     an array of objects if count is greater than 1
 --]]
 
-function Module:get(category: string, count: number?) : ({object}) | nil
-    assert(Module.cache[category] ~= nil, `"{category}" Category does not exist`)
+function Module:get(count: number?, category: string, name: string) : ({object}) | nil
+    if not Module.cache[category] then
+        local start: number = os.clock()
+        local timeout: number = 10
 
+        repeat
+            if os.clock() - start >= timeout then
+                warn(`Timer has timed out when while waiting for category. {
+                    `Please ensure nothing is preventing category {category} from being created!`
+                }`)
+                break
+            end
+
+            task.wait()
+        until Module.cache[category]
+    end
+    
     local cacheCategory: category = Module.cache[category]
     local items: typeof(category.items) = cacheCategory.items
 
@@ -103,12 +118,7 @@ function Module:get(category: string, count: number?) : ({object}) | nil
             local itemsToReturn: {Instance} = {}
             local newCount: number = if #items >= count then count else #items
 
-            for index = 0, newCount, 1 do
-                local object: object = items[index]
-                if not object then
-                    continue
-                end
-
+            local function setItem(object: object, index: number)
                 Module.inUse[object] = {
                     instance = object,
                     category = category,
@@ -118,15 +128,54 @@ function Module:get(category: string, count: number?) : ({object}) | nil
                 table.remove(items, index)
             end
 
+            if name then
+                local found: number = 0
+                for _, item: object in table.clone(items) do
+                    if item.Name == name then
+                        setItem(item, table.find(items, item))
+                        found += 1
+
+                        if found >= newCount then
+                            break
+                        end
+                    end
+                end
+            else
+                for index = 0, newCount, 1 do
+                    local object: object = items[index]
+                    if not object then
+                        continue
+                    end
+    
+                    setItem(index)
+                end
+            end
+            
             return itemsToReturn
         else
-            local object: Instance = items[1]
-            Module.inUse[object] = {
-                instance = object,
-                category = category,
-            }
+            local object: object = items[1]
+            local function setItem(item: object)
+                Module.inUse[item] = {
+                    instance = item,
+                    category = category,
+                }
+            end
 
-            table.remove(items, 1) -- We've taken the object out of the cache, since it's being used (needs to be returned)
+            if name then
+                for _, item: object in items do
+                    if item.Name == name then
+                        setItem(item)
+                        table.remove(items, table.find(items, item))
+
+                        object = item
+                        break
+                    end
+                end
+            else
+                setItem(object)
+                table.remove(items, 1) -- We've taken the object out of the cache, since it's being used (needs to be returned)
+            end
+
             return {object}
         end
     end
@@ -188,6 +237,9 @@ function Module:rebound(object: object| nil) : boolean | nil
 
     local cacheCategory: category = Module.cache[category]
     local items: typeof(category.items) = cacheCategory.items
+    local parent: any | Workspace = cacheCategory.parent or workspace
+
+    object.Parent = parent
 
     Module.inUse[object] = nil
     table.insert(items, object)
@@ -209,7 +261,7 @@ function Module:_reset(object: object | nil)
     -- Move object back to very far away
     if object:IsA("Model") then
         object:PivotTo(LARGE_CFRAME)
-    else
+    elseif object:IsA("BasePart") then
         object.CFrame = LARGE_CFRAME
     end
 end
